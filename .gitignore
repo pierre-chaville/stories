@@ -1,0 +1,32 @@
+# API keys — never commit
+.env
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Audio data — large files, not versioned
+input/
+normalized/
+renamed/
+fixed/
+completed/
+
+# Transcription cache — keep these (small JSON, saves re-transcription cost)
+transcribed/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Claude AI — local cache of conversations, not versioned
+.claude/

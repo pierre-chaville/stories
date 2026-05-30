@@ -1,0 +1,8 @@
+# System dependency (not a Python package): ffmpeg must be in PATH
+# Install via: winget install Gyan.FFmpeg
+
+python-dotenv
+httpx
+langchain-openai
+openai
+mutagen
