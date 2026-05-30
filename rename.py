@@ -186,6 +186,7 @@ def process_book(
         file_nn[t["filename"]] = current_nn
 
     used_names: set[str] = set()
+    rename_map: dict[str, str | None] = {}
     ok = failed = 0
 
     for t in transcriptions:
@@ -203,6 +204,7 @@ def process_book(
             stem = build_filename(label, nn)
             final = unique_name(stem, used_names)
             used_names.add(final)
+            rename_map[filename] = final + ".mp3"
 
             dup_note = f"  [was: {stem}]" if final != stem else ""
             print(f"  {filename}  →  {final}{dup_note}")
@@ -219,7 +221,14 @@ def process_book(
 
         except Exception as exc:
             print(f"  {filename}  ERROR: {exc}")
+            rename_map[filename] = None
             failed += 1
+
+    # Write audit trail back into the transcription JSON
+    if not dry_run:
+        for entry in data["transcriptions"]:
+            entry["renamed_file"] = rename_map.get(entry["filename"])
+        json_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     return ok, failed
 
