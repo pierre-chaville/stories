@@ -11,7 +11,7 @@ input/<book>/ZOOM00xx.MP3
    normalize.py  ──► normalized/<book>/ZOOM00xx.mp3   (–16 LUFS, two-pass loudnorm)
         │
         ▼
-  transcribe.py  ──► transcribed/<book>.json           (first 20 s, Deepgram nova-2)
+  transcribe.py  ──► transcribed/<book>.json           (first + last 20 s, Deepgram nova-2)
         │
         ▼
     rename.py    ──► renamed/<book>/ChapNN_title.mp3   (LLM chapter detection + ID3 tags)
@@ -20,7 +20,8 @@ input/<book>/ZOOM00xx.MP3
     fixer.py     ──► fixed/<book>/ChapNN_title.mp3     (merge continued recordings, remove overlap)
 ```
 
-Run all three main steps at once with **`pipeline.py`**.
+Run all three main steps at once with **`pipeline.py`**.  
+Inspect library statistics (chapter counts, durations) with **`stats.py`**.
 
 ---
 
@@ -87,6 +88,7 @@ stories/
 ├── rename.py
 ├── fixer.py
 ├── pipeline.py
+├── stats.py
 ├── requirements.txt
 └── .env                    # not committed
 ```
@@ -118,7 +120,12 @@ python normalize.py --workers 8              # more parallel ffmpeg jobs
 
 ### `transcribe.py` — Deepgram transcription
 
-Transcribes the **first 20 seconds** of each normalised file using [Deepgram](https://deepgram.com) nova-2 (French). Results are saved as one JSON file per book in `transcribed/`.
+Transcribes the **first and last 20 seconds** of each normalised file using [Deepgram](https://deepgram.com) nova-2 (French). Results are saved as one JSON file per book in `transcribed/`.
+
+- `transcript` — beginning of the file, used by `rename.py` for chapter detection.
+- `transcript_end` — end of the file, informational: verify the recording is complete, or confirm it feeds into a `_continued` file.
+
+After `rename.py` runs, a `renamed_file` field is written back into each entry as an audit trail.
 
 ```bash
 python transcribe.py                          # all books
@@ -140,11 +147,18 @@ python transcribe.py --overwrite              # re-transcribe existing JSONs
   "book": "Heidi grandit",
   "snippet_seconds": 20,
   "transcriptions": [
-    { "filename": "ZOOM0001.mp3", "transcript": "Chapitre un, au pensionnat…", "transcript_end": "…et ils rentrèrent tous à la maison." },
+    {
+      "filename": "ZOOM0006.mp3",
+      "transcript":     "Chapitre 4, heureuse nouvelle. Tony a rencontré le docteur.",
+      "transcript_end": "…et le docteur repartit vers la vallée.",
+      "renamed_file":   "Chap04_heureuse nouvelle.mp3"
+    },
     …
   ]
 }
 ```
+
+> `renamed_file` is `null` for files that failed during renaming, and absent until `rename.py` has been run.
 
 ---
 
@@ -208,6 +222,37 @@ python fixer.py "Heidi grandit" --input renamed --output fixed
 
 ---
 
+### `stats.py` — Library statistics
+
+Scans all book subfolders in a given folder and displays chapter count, total duration, and average chapter duration per book.
+
+```bash
+python stats.py completed
+python stats.py renamed
+python stats.py fixed
+```
+
+Example output:
+
+```
+completed/
+
+Book                                      Chapters    Duration   Avg/chapter
+────────────────────────────────────────────────────────────────────────────
+Book 1                                          18    4:23:15       0:14:38
+Book 2                                          17    3:58:42       0:14:03
+Book 3 - by John Smith                          22    5:12:43       0:14:11
+────────────────────────────────────────────────────────────────────────────
+TOTAL  (3 books)                                57   13:34:40       0:14:17
+```
+
+| Argument | Default | Description |
+|---|---|---|
+| `folder` | *(required)* | Subfolder to scan (e.g. `completed`, `renamed`) |
+| `--root` | `.` | Root directory if different from project folder |
+
+---
+
 ### `pipeline.py` — Full pipeline
 
 Runs `normalize → transcribe → rename` for a single book in one command.
@@ -249,6 +294,9 @@ python rename.py --book "Heidi grandit" --dry-run
 
 # 4. If some chapters were split across recordings, merge them
 python fixer.py "Heidi grandit"
+
+# 5. Check statistics for the final output
+python stats.py completed
 ```
 
 ---
@@ -257,5 +305,5 @@ python fixer.py "Heidi grandit"
 
 - **Language**: transcription and chapter detection are configured for **French**. Change `"language": "fr"` in `transcribe.py` and the system prompts in `rename.py` / `fixer.py` to adapt to another language.
 - **Models**: the Deepgram model is `nova-2`. The OpenAI model is set via `OPENAI_MODEL` in `rename.py` and `fixer.py`.
-- **Transcription cache**: the JSON files in `transcribed/` are kept out of the audio gitignore so you can re-run `rename.py` without paying for re-transcription.
+- **Transcription cache**: the JSON files in `transcribed/` persist between runs — `rename.py` reads them without re-calling Deepgram, and writes the `renamed_file` audit trail back into them.
 - **ID3 tags**: `rename.py` writes `TALB` (album = book folder name), `TIT2` (title = chapter title), and `TRCK` (track = chapter number) to every output file.
